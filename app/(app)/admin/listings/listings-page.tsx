@@ -50,6 +50,7 @@ import { TOAST_COPY } from "@/lib/copy";
 import { CATEGORY_META, categoryFromSlug, type RemoveReason } from "@/lib/domain/categories";
 import type { AdminListingDTO } from "@/lib/domain/dto";
 import { useAppQuery } from "@/lib/hooks/use-app-query";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useUrlFilters, useUrlText } from "@/lib/hooks/use-url-filters";
 import { toast, toastAppError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -125,7 +126,8 @@ function AdminListings() {
 
   const all = useMemo(() => data ?? [], [data]);
   const target = targetId ? (all.find((l) => l._id === targetId && !l.removed) ?? null) : null;
-  const q = query.trim().toLowerCase();
+  // Rows follow the search after a short pause; the input itself stays instant.
+  const q = useDebouncedValue(query.trim()).toLowerCase();
   const rows = all.filter(
     (t) =>
       (category === "all" || t.category === category) &&

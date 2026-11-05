@@ -37,6 +37,7 @@ import { CATEGORY_META, categoryFromSlug } from "@/lib/domain/categories";
 import type { LoanRowDTO } from "@/lib/domain/dto";
 import type { LoanStatus } from "@/lib/domain/status";
 import { useAppQuery } from "@/lib/hooks/use-app-query";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useUrlFilters, useUrlText } from "@/lib/hooks/use-url-filters";
 import { cn } from "@/lib/utils";
 
@@ -87,7 +88,8 @@ function AdminLoans() {
   const today = clientToday();
 
   const all = useMemo(() => data ?? [], [data]);
-  const q = query.trim().toLowerCase();
+  // Rows follow the search after a short pause; the input itself stays instant.
+  const q = useDebouncedValue(query.trim()).toLowerCase();
   // Category + search narrow the segment counts; the status segment then picks within them.
   const base = useMemo(
     () => all.filter((l) => (category === "all" || l.tool.category === category) && matchesQuery(l, q)),

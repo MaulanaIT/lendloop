@@ -14,6 +14,7 @@ import { isAvailableNow, type Availability } from "@/lib/domain/availability";
 import { CATEGORY_META, type Category } from "@/lib/domain/categories";
 import type { ToolCardDTO } from "@/lib/domain/dto";
 import { useAppQuery } from "@/lib/hooks/use-app-query";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useViewer } from "@/lib/hooks/use-viewer";
 import { FilterBar } from "./filter-bar";
 import { FirstRunBanner } from "./first-run-banner";
@@ -56,7 +57,9 @@ export function BrowseTools() {
   const tools = useMemo(() => toolsQuery.data ?? [], [toolsQuery.data]);
   const myById = useMemo(() => new Map((mine.data ?? []).map((l) => [l._id, l])), [mine.data]);
 
-  const ql = filters.q.trim().toLowerCase();
+  // The input updates at once; the grid and counts follow after a short pause.
+  const searchQ = useDebouncedValue(filters.q.trim());
+  const ql = searchQ.toLowerCase();
   const base = useMemo(
     () => tools.filter((t) => matchesSearch(t, ql) && (!filters.availableOnly || isAvailableNow(t.availability))),
     [tools, ql, filters.availableOnly],
@@ -144,7 +147,7 @@ export function BrowseTools() {
         ) : visible.length === 0 ? (
           <EmptyState
             icon={SearchX}
-            title={noResultsTitle(filters)}
+            title={noResultsTitle({ ...filters, q: searchQ })}
             description="Try another category, or check back soon."
             action={
               <Button variant="outline" className="px-4" onClick={clear}>

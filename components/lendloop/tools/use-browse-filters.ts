@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CategoryFilter } from "@/components/lendloop/category-chip";
 import { CATEGORY_META, categoryFromSlug } from "@/lib/domain/categories";
+import { SEARCH_DEBOUNCE_MS } from "@/lib/hooks/use-debounced-value";
 
 export type BrowseFilters = {
   /** Live search text (updates the URL after a short pause). */
@@ -11,8 +12,6 @@ export type BrowseFilters = {
   category: CategoryFilter;
   availableOnly: boolean;
 };
-
-const SEARCH_URL_DELAY_MS = 250;
 
 function toQuery(f: BrowseFilters): string {
   const p = new URLSearchParams();
@@ -65,7 +64,7 @@ export function useBrowseFilters() {
     timer.current = window.setTimeout(() => {
       setPendingQ(value.trim());
       replace({ q: value, category, availableOnly });
-    }, SEARCH_URL_DELAY_MS);
+    }, SEARCH_DEBOUNCE_MS);
   };
 
   // Each write carries the latest local search text, so a pending search write is dropped.

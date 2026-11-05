@@ -2,8 +2,7 @@
 
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-
-const TEXT_URL_DELAY_MS = 250;
+import { SEARCH_DEBOUNCE_MS } from "./use-debounced-value";
 
 /**
  * Page filters and tabs kept in the query string, so Back, refresh and a
@@ -58,7 +57,7 @@ export function useUrlText(urlValue: string, write: (value: string) => void) {
     timer.current = window.setTimeout(() => {
       setPending(value.trim());
       write(value.trim());
-    }, TEXT_URL_DELAY_MS);
+    }, SEARCH_DEBOUNCE_MS);
   };
   /** Set at once (e.g. "Clear filters"), dropping a pending write. */
   const reset = (value: string) => {
