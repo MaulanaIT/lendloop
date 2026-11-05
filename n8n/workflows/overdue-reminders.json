@@ -1,0 +1,547 @@
+{
+  "id": "lendloopOverdueR",
+  "name": "LendLoop · Overdue reminders",
+  "nodes": [
+    {
+      "id": "or-schedule",
+      "name": "Daily 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "or-manual",
+      "name": "Run now (manual test)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "or-sign-fetch",
+      "name": "Sign overdue-loans request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Signs the overdue-loans fetch. runDate is \"today\" in GENERIC_TIMEZONE, which\n// must equal APP_TIME_ZONE on Convex so both sides agree on what \"overdue\" means.\nconst crypto = require('crypto');\n\nconst secret = $env.CONVEX_INBOUND_SECRET;\nif (!secret) throw new Error('CONVEX_INBOUND_SECRET is not set');\n\nconst timeZone = $env.GENERIC_TIMEZONE || 'Asia/Jakarta';\n// en-CA formats as YYYY-MM-DD.\nconst runDate = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());\nconst executionId = String($execution.id);\n\nconst rawBody = JSON.stringify({ runDate, executionId });\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst signature = 'v1=' + crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`, 'utf8').digest('hex');\n\nreturn [{ json: { runDate, executionId, startedAt: Date.now(), rawBody, timestamp, signature } }];\n"
+      }
+    },
+    {
+      "id": "or-fetch",
+      "name": "Fetch overdue loans",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CONVEX_SITE_URL }}/n8n/overdue-loans",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-LendLoop-Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "X-LendLoop-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.rawBody }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "or-if-any",
+      "name": "Any overdue loans?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "or-if-any-c1",
+              "leftValue": "={{ ($json.loans || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "or-prepare",
+      "name": "Prepare reminders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// One item per overdue loan, built from the minimized OverdueLoanForN8n fields only.\nconst appUrl = String($env.APP_URL || 'http://localhost:3000').replace(/\\/+$/, '');\nconst from = $env.MAIL_FROM || 'LendLoop <no-reply@lendloop.local>';\nconst fmtDay = (iso) =>\n  new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });\n\nconst loans = $('Fetch overdue loans').first().json.loans || [];\nconst out = [];\nfor (const loan of loans) {\n  const ok =\n    loan &&\n    typeof loan.idempotencyKey === 'string' &&\n    typeof loan.loanId === 'string' &&\n    typeof loan.toolName === 'string' &&\n    typeof loan.endDate === 'string' &&\n    typeof loan.recipientFirstName === 'string' &&\n    typeof loan.recipientEmail === 'string';\n  if (!ok) {\n    console.log('[lendloop] overdue loan skipped: incomplete record');\n    continue;\n  }\n  const days = Number(loan.daysOverdue) || 1;\n  const link = `${appUrl}/loans/${encodeURIComponent(loan.loanId)}`;\n  const text = [\n    `Hi ${loan.recipientFirstName},`,\n    '',\n    `${loan.toolName} was due back on ${fmtDay(loan.endDate)} (${days} ${days === 1 ? 'day' : 'days'} overdue). Please return it to the owner.`,\n    '',\n    'Open the loan in LendLoop:',\n    link,\n    '',\n    '— LendLoop',\n    `Ref ${loan.loanId}. You get this reminder once a day while the loan is overdue.`,\n  ].join('\\n');\n  out.push({\n    json: {\n      idempotencyKey: loan.idempotencyKey,\n      loanId: loan.loanId,\n      attempt: Number.isInteger(loan.attempt) && loan.attempt >= 1 ? loan.attempt : 1,\n      from,\n      to: loan.recipientEmail,\n      subject: `Reminder: ${loan.toolName} is ${days} ${days === 1 ? 'day' : 'days'} overdue`,\n      text,\n    },\n  });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "or-email-1",
+      "name": "Send reminder",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1200,
+        200
+      ],
+      "parameters": {
+        "fromEmail": "={{ $('Prepare reminders').item.json.from }}",
+        "toEmail": "={{ $('Prepare reminders').item.json.to }}",
+        "subject": "={{ $('Prepare reminders').item.json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $('Prepare reminders').item.json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "lendloopMailpitS",
+          "name": "Mailpit SMTP (local)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "or-wait-1",
+      "name": "Wait 5s (retry 2)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1420,
+        360
+      ],
+      "webhookId": "3b0f1e52-7a4d-4b8e-9a61-2f5c8d1e4a03",
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "or-email-2",
+      "name": "Send reminder (attempt 2)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1640,
+        360
+      ],
+      "parameters": {
+        "fromEmail": "={{ $('Prepare reminders').item.json.from }}",
+        "toEmail": "={{ $('Prepare reminders').item.json.to }}",
+        "subject": "={{ $('Prepare reminders').item.json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $('Prepare reminders').item.json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "lendloopMailpitS",
+          "name": "Mailpit SMTP (local)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "or-wait-2",
+      "name": "Wait 5s (retry 3)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1860,
+        520
+      ],
+      "webhookId": "3b0f1e52-7a4d-4b8e-9a61-2f5c8d1e4a04",
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "or-email-3",
+      "name": "Send reminder (attempt 3)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2080,
+        520
+      ],
+      "parameters": {
+        "fromEmail": "={{ $('Prepare reminders').item.json.from }}",
+        "toEmail": "={{ $('Prepare reminders').item.json.to }}",
+        "subject": "={{ $('Prepare reminders').item.json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $('Prepare reminders').item.json.text }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "smtp": {
+          "id": "lendloopMailpitS",
+          "name": "Mailpit SMTP (local)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "or-merge",
+      "name": "Collect outcomes",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2320,
+        200
+      ],
+      "parameters": {
+        "numberInputs": 4
+      }
+    },
+    {
+      "id": "or-sign-wb",
+      "name": "Build write-backs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// The Merge node collects both outputs of \"Send reminder\": success items carry\n// the SMTP result, error items carry `error`. Each is paired back to its loan.\n// \"Write back reminder\" signs and posts each body.\nconst executionId = String($execution.id);\n\nreturn $input.all().map((item, i) => {\n  const loan = $('Prepare reminders').itemMatching(i).json;\n  const status = item.json.error === undefined ? 'sent' : 'failed';\n  const body = { idempotencyKey: loan.idempotencyKey, status, attempt: loan.attempt, executionId, channel: 'email' };\n  if (status === 'failed') body.errorCategory = 'delivery_failed';\n  return { json: { idempotencyKey: loan.idempotencyKey, status, rawBody: JSON.stringify(body) } };\n});\n"
+      }
+    },
+    {
+      "id": "or-writeback",
+      "name": "Write back reminder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// POSTs each loan's write-back to /n8n/deliveries with its own retries: up to\n// 3 tries, 5 s apart. (An HTTP Request node's Retry On Fail only looks at the\n// FIRST item, so it would skip a later loan's failed write-back and re-post\n// the ones that already succeeded.) Every try is signed afresh over the same\n// body, so the idempotency key is unchanged and a slow run never trips the\n// 300 s replay window. One output item per input, in order, for \"Summarize\n// run\": {ok, duplicate}, or {error} when the write-back never landed.\nconst crypto = require('crypto');\n\nconst secret = $env.CONVEX_INBOUND_SECRET;\nif (!secret) throw new Error('CONVEX_INBOUND_SECRET is not set');\nconst url = `${String($env.CONVEX_SITE_URL || '').replace(/\\/+$/, '')}/n8n/deliveries`;\nconst helpers = this.helpers;\n\nconst TRIES = 3;\nconst WAIT_MS = 5000;\n// Stay well inside N8N_RUNNERS_TASK_TIMEOUT: once spent, the remaining loans\n// get no more retries and are counted as failed in the run summary.\nconst BUDGET_MS = 200000;\nconst started = Date.now();\nconst sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n// No answer, 429 and 5xx can succeed later; any other 4xx (bad signature,\n// unknown loan, bad body) would only be rejected again.\nconst retryable = (code) => code === 0 || code === 429 || code >= 500;\n\nasync function post(idempotencyKey, rawBody) {\n  const timestamp = String(Math.floor(Date.now() / 1000));\n  const signature = 'v1=' + crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`, 'utf8').digest('hex');\n  try {\n    const res = await helpers.httpRequest({\n      method: 'POST',\n      url,\n      headers: {\n        'Content-Type': 'application/json',\n        'X-LendLoop-Timestamp': timestamp,\n        'X-LendLoop-Signature': signature,\n        'X-Idempotency-Key': idempotencyKey,\n      },\n      body: rawBody,\n      json: false,\n      timeout: 10000,\n      returnFullResponse: true,\n      ignoreHttpStatusErrors: true,\n    });\n    const code = Number(res.statusCode) || 0;\n    if (code < 200 || code >= 300) return { code };\n    const body = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;\n    return { code, result: { ok: body.ok === true, duplicate: body.duplicate === true } };\n  } catch (e) {\n    return { code: 0 }; // timeout, refused, DNS, or an unreadable 2xx body\n  }\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const { idempotencyKey, rawBody } = item.json;\n  let last = { code: 0 };\n  for (let attempt = 1; attempt <= TRIES; attempt++) {\n    if (attempt > 1) {\n      if (!retryable(last.code) || Date.now() - started > BUDGET_MS) break;\n      await sleep(WAIT_MS);\n    }\n    last = await post(idempotencyKey, rawBody);\n    if (last.result) break;\n  }\n  if (!last.result) {\n    // Key and status only: never the body (it names the loan) or the signature.\n    console.log(`[lendloop] reminder write-back failed key=${idempotencyKey} status=${last.code || 'no_response'}`);\n  }\n  out.push({ json: last.result || { error: 'write_back_failed', statusCode: last.code } });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "or-summary",
+      "name": "Summarize run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3040,
+        320
+      ],
+      "parameters": {
+        "jsCode": "// Aggregates the run and signs POST /n8n/reminder-runs. Runs on both paths:\n// after the write-backs, or straight from \"Any overdue loans?\" when none were found.\nconst crypto = require('crypto');\n\nconst secret = $env.CONVEX_INBOUND_SECRET;\nif (!secret) throw new Error('CONVEX_INBOUND_SECRET is not set');\n\nconst req = $('Sign overdue-loans request').first().json;\nconst fetched = $('Fetch overdue loans').first().json;\n\nlet signed = [];\nlet results = [];\ntry {\n  signed = $('Build write-backs').all();\n  results = $('Write back reminder').all();\n} catch (e) {\n  // Zero overdue loans: the write-back branch never ran.\n}\n\nlet sent = 0;\nlet failed = 0;\nlet duplicates = 0;\nsigned.forEach((s, i) => {\n  const r = results[i] ? results[i].json : {};\n  const writeBackFailed = r.error !== undefined;\n  if (s.json.status === 'sent' && !writeBackFailed) sent++;\n  else failed++;\n  if (r.duplicate === true) duplicates++;\n});\n\n// Convex leaves out loans already reminded for runDate and only counts them\n// (OverdueLoansResponse.skipped), so \"found\" is every overdue loan.\nconst skipped = Number.isInteger(fetched.skipped) && fetched.skipped > 0 ? fetched.skipped : 0;\nconst body = {\n  executionId: req.executionId,\n  runDate: req.runDate,\n  found: (Array.isArray(fetched.loans) ? fetched.loans.length : 0) + skipped,\n  sent,\n  skipped,\n  duplicates,\n  failed,\n  durationMs: Date.now() - req.startedAt,\n};\n\nconst rawBody = JSON.stringify(body);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst signature = 'v1=' + crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`, 'utf8').digest('hex');\n\nconsole.log(\n  `[lendloop] reminder run ${body.runDate} execution=${body.executionId} found=${body.found} sent=${sent} failed=${failed} duplicates=${duplicates} skipped=${body.skipped}`,\n);\nreturn [{ json: { ...body, rawBody, timestamp, signature } }];\n"
+      }
+    },
+    {
+      "id": "or-post-run",
+      "name": "Post run summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3280,
+        320
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CONVEX_SITE_URL }}/n8n/reminder-runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-LendLoop-Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "X-LendLoop-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.rawBody }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Daily 09:00": {
+      "main": [
+        [
+          {
+            "node": "Sign overdue-loans request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now (manual test)": {
+      "main": [
+        [
+          {
+            "node": "Sign overdue-loans request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign overdue-loans request": {
+      "main": [
+        [
+          {
+            "node": "Fetch overdue loans",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch overdue loans": {
+      "main": [
+        [
+          {
+            "node": "Any overdue loans?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any overdue loans?": {
+      "main": [
+        [
+          {
+            "node": "Prepare reminders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Summarize run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare reminders": {
+      "main": [
+        [
+          {
+            "node": "Send reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send reminder": {
+      "main": [
+        [
+          {
+            "node": "Collect outcomes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 5s (retry 2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5s (retry 2)": {
+      "main": [
+        [
+          {
+            "node": "Send reminder (attempt 2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send reminder (attempt 2)": {
+      "main": [
+        [
+          {
+            "node": "Collect outcomes",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Wait 5s (retry 3)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5s (retry 3)": {
+      "main": [
+        [
+          {
+            "node": "Send reminder (attempt 3)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send reminder (attempt 3)": {
+      "main": [
+        [
+          {
+            "node": "Collect outcomes",
+            "type": "main",
+            "index": 2
+          }
+        ],
+        [
+          {
+            "node": "Collect outcomes",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Collect outcomes": {
+      "main": [
+        [
+          {
+            "node": "Build write-backs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write back reminder": {
+      "main": [
+        [
+          {
+            "node": "Summarize run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize run": {
+      "main": [
+        [
+          {
+            "node": "Post run summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build write-backs": {
+      "main": [
+        [
+          {
+            "node": "Write back reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": false,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "lendloopErrorHdl"
+  },
+  "staticData": null,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "active": true
+}

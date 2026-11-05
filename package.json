@@ -1,0 +1,50 @@
+{
+  "name": "lendloop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:convex": "convex dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p convex",
+    "test": "vitest run",
+    "seed": "convex run seed:run",
+    "n8n:up": "sh scripts/setup-n8n-env.sh && docker compose up -d",
+    "n8n:down": "docker compose down",
+    "n8n:reimport": "docker compose run --rm n8n-init && docker compose restart n8n",
+    "n8n:remind": "docker compose exec -e N8N_RUNNERS_BROKER_PORT=5690 n8n n8n execute --id lendloopOverdueR",
+    "n8n:sign": "node --env-file=n8n/.env scripts/sign-and-send.mjs",
+    "n8n:mock": "node --env-file=n8n/.env scripts/mock-n8n-webhook.mjs"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^7.9.24",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "convex": "^1.49.0",
+    "lucide-react": "^1.69.0",
+    "next": "16.4.5",
+    "radix-ui": "^1.8.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "sonner": "^2.0.8",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "convex-test": "^0.0.67",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.5",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^5.1.0"
+  },
+  "allowScripts": {
+    "esbuild@0.27.0": true
+  }
+}

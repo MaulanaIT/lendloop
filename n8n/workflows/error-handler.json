@@ -1,0 +1,105 @@
+{
+  "id": "lendloopErrorHdl",
+  "name": "LendLoop · Error handler",
+  "nodes": [
+    {
+      "id": "eh-trigger",
+      "name": "On workflow error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "eh-categorize",
+      "name": "Categorize error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// Maps a failed execution to an ErrorCategory (lib/domain/automation.ts).\n// Only the category, workflow name, node name and execution ID leave n8n:\n// error messages, item data and stack traces may contain personal data, so\n// they are used for classification here and then dropped.\nconst crypto = require('crypto');\n\nconst ev = $input.first().json;\nconst execution = ev.execution || {};\nconst err = execution.error || (ev.trigger && ev.trigger.error) || {};\nconst nodeName = (err.node && err.node.name) || execution.lastNodeExecuted || undefined;\nconst nodeType = (err.node && err.node.type) || '';\n// httpCode is a status (\"503\") for HTTP errors, or a socket code (\"ECONNREFUSED\") for network errors.\nconst rawCode = err.httpCode || (err.context && err.context.httpCode) || (err.cause && err.cause.status) || '';\nconst httpCode = /^\\d{3}$/.test(String(rawCode)) ? Number(rawCode) : NaN;\nconst text = [String(rawCode), err.message, err.description, err.name, err.code, err.cause && err.cause.code]\n  .filter((v) => typeof v === 'string')\n  .join(' ')\n  .toLowerCase();\n\nfunction categorize() {\n  // Convex answers 503 {\"error\":\"not_configured\"} when CONVEX_INBOUND_SECRET is unset.\n  if (/is not set|not[ _]configured/.test(text)) return 'not_configured';\n  // Every HTTP node in these workflows calls Convex, which answers 401 only when it rejects our HMAC.\n  if (httpCode === 401) return 'signature_rejected';\n  if (httpCode >= 500) return 'upstream_5xx';\n  if (httpCode >= 400) return 'upstream_4xx';\n  if (/timeout|timed out|etimedout|esockettimedout|econnaborted/.test(text)) return 'timeout';\n  // n8n rewrites socket errors (\"The service refused the connection - perhaps it is offline\").\n  if (/econnrefused|enotfound|eai_again|econnreset|ehostunreach|socket hang up|network|refused the connection|dns|offline/.test(text)) return 'network';\n  return 'delivery_failed';\n}\n\nconst report = {\n  executionId: String(execution.id || $execution.id),\n  workflow: (ev.workflow && ev.workflow.name) || 'unknown',\n  errorCategory: categorize(),\n};\nif (nodeName) report.node = nodeName;\n\nconsole.log(\n  `[lendloop] workflow error workflow=\"${report.workflow}\" node=\"${report.node || '-'}\" category=${report.errorCategory} execution=${report.executionId}${nodeType ? ` type=${nodeType}` : ''}`,\n);\n\nconst secret = $env.CONVEX_INBOUND_SECRET;\nif (!secret) throw new Error('CONVEX_INBOUND_SECRET is not set');\nconst rawBody = JSON.stringify(report);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst signature = 'v1=' + crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`, 'utf8').digest('hex');\n\nreturn [{ json: { ...report, rawBody, timestamp, signature } }];\n"
+      }
+    },
+    {
+      "id": "eh-report",
+      "name": "Report to Convex",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CONVEX_SITE_URL }}/n8n/errors",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-LendLoop-Timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "name": "X-LendLoop-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.rawBody }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "On workflow error": {
+      "main": [
+        [
+          {
+            "node": "Categorize error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Categorize error": {
+      "main": [
+        [
+          {
+            "node": "Report to Convex",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": false,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "active": false
+}

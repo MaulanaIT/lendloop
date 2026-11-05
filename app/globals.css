@@ -1,0 +1,251 @@
+@import "tailwindcss";
+
+/* "Community Toolshed" tokens (docs/design-notes.md). One brand color (teal);
+   every other color carries meaning: status, category, Trusted, Admin, failure. */
+
+:root {
+  --background: #fbfaf7;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --foreground: #1c1917;
+  --muted: #f5f5f4;
+  --muted-foreground: #57534e;
+  --border: #e7e5e4;
+  --input: #e7e5e4;
+  --control-border: #8a847e;
+  --primary: #0f766e;
+  --primary-hover: #115e59;
+  --primary-foreground: #ffffff;
+  --primary-subtle: #f0fdfa;
+  --accent: #ccfbf1;
+  --ring: #0f766e;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --overlay: rgba(28, 25, 23, 0.45);
+
+  --success-text: #166534; --success-bg: #f0fdf4; --success-border: #bbf7d0;
+  --warning-text: #92400e; --warning-bg: #fffbeb; --warning-border: #fde68a;
+  --danger-text: #991b1b; --danger-bg: #fef2f2; --danger-border: #fecaca;
+  --info-text: #1e40af; --info-bg: #eff6ff; --info-border: #bfdbfe;
+
+  --st-pending-text: var(--warning-text); --st-pending-bg: var(--warning-bg); --st-pending-border: var(--warning-border);
+  --st-approved-text: var(--info-text); --st-approved-bg: var(--info-bg); --st-approved-border: var(--info-border);
+  --st-onloan-text: #5b21b6; --st-onloan-bg: #f5f3ff; --st-onloan-border: #ddd6fe;
+  --st-overdue-text: var(--danger-text); --st-overdue-bg: var(--danger-bg); --st-overdue-border: var(--danger-border);
+  --st-returned-text: var(--success-text); --st-returned-bg: var(--success-bg); --st-returned-border: var(--success-border);
+  --st-declined-text: #475569; --st-declined-bg: #f8fafc; --st-declined-border: #e2e8f0;
+  --st-cancelled-text: #57534e; --st-cancelled-bg: #fafaf9; --st-cancelled-border: #e7e5e4;
+  --st-reported-text: #44403c; --st-reported-bg: #f5f5f4; --st-reported-border: #e7e5e4;
+
+  --trusted-text: #134e4a; --trusted-bg: #ccfbf1; --trusted-border: #99f6e4; --trusted-icon: #0f766e;
+  --admin-bg: #1c1917; --admin-text: #fafaf9;
+
+  --cat-power-fg: #c2410c; --cat-power-bg: #fff7ed;
+  --cat-hand-fg: #a16207; --cat-hand-bg: #fefce8;
+  --cat-garden-fg: #15803d; --cat-garden-bg: #f0fdf4;
+  --cat-kitchen-fg: #be123c; --cat-kitchen-bg: #fff1f2;
+  --cat-camping-fg: #0369a1; --cat-camping-bg: #f0f9ff;
+  --cat-cleaning-fg: #6d28d9; --cat-cleaning-bg: #f5f3ff;
+  --cat-ladders-fg: #4338ca; --cat-ladders-bg: #eef2ff;
+  --cat-other-fg: #57534e; --cat-other-bg: #f5f5f4;
+
+  --shadow-card: 0 1px 3px rgba(28, 25, 23, 0.08), 0 1px 2px rgba(28, 25, 23, 0.04);
+  --shadow-pop: 0 8px 24px -6px rgba(28, 25, 23, 0.12);
+
+  --radius: 0.75rem;
+  color-scheme: light;
+}
+
+/* Dark theme: follows the OS unless data-theme pins a choice. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #0e0d0b; --card: #1c1917; --popover: #292524; --foreground: #f5f5f4;
+    --muted: #292524; --muted-foreground: #a8a29e; --border: #3a3532; --input: #3a3532; --control-border: #78716c;
+    --primary: #2dd4bf; --primary-hover: #5eead4; --primary-foreground: #042f2e; --primary-subtle: #042f2e;
+    --accent: #134e4a; --ring: #5eead4; --destructive: #f87171; --destructive-foreground: #450a0a;
+    --overlay: rgba(0, 0, 0, 0.6);
+    --success-text: #86efac; --success-bg: #052e16; --success-border: #14532d;
+    --warning-text: #fcd34d; --warning-bg: #451a03; --warning-border: #78350f;
+    --danger-text: #fca5a5; --danger-bg: #450a0a; --danger-border: #7f1d1d;
+    --info-text: #93c5fd; --info-bg: #172554; --info-border: #1e3a8a;
+    --st-pending-text: #fcd34d; --st-pending-bg: #451a03; --st-pending-border: #78350f;
+    --st-approved-text: #93c5fd; --st-approved-bg: #172554; --st-approved-border: #1e3a8a;
+    --st-onloan-text: #c4b5fd; --st-onloan-bg: #2e1065; --st-onloan-border: #3a3532;
+    --st-overdue-text: #fca5a5; --st-overdue-bg: #450a0a; --st-overdue-border: #7f1d1d;
+    --st-returned-text: #86efac; --st-returned-bg: #052e16; --st-returned-border: #14532d;
+    --st-declined-text: #cbd5e1; --st-declined-bg: #1e293b; --st-declined-border: #3a3532;
+    --st-cancelled-text: #a8a29e; --st-cancelled-bg: #1c1917; --st-cancelled-border: #44403c;
+    --st-reported-text: #d6d3d1; --st-reported-bg: #292524; --st-reported-border: #3a3532;
+    --trusted-text: #99f6e4; --trusted-bg: #134e4a; --trusted-border: #134e4a; --trusted-icon: #2dd4bf;
+    --admin-bg: #fafaf9; --admin-text: #1c1917;
+    --cat-power-fg: #fdba74; --cat-power-bg: #431407;
+    --cat-hand-fg: #fde047; --cat-hand-bg: #422006;
+    --cat-garden-fg: #86efac; --cat-garden-bg: #052e16;
+    --cat-kitchen-fg: #fda4af; --cat-kitchen-bg: #4c0519;
+    --cat-camping-fg: #7dd3fc; --cat-camping-bg: #082f49;
+    --cat-cleaning-fg: #c4b5fd; --cat-cleaning-bg: #2e1065;
+    --cat-ladders-fg: #a5b4fc; --cat-ladders-bg: #1e1b4b;
+    --cat-other-fg: #d6d3d1; --cat-other-bg: #292524;
+    --shadow-card: none; --shadow-pop: none;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #0e0d0b; --card: #1c1917; --popover: #292524; --foreground: #f5f5f4;
+  --muted: #292524; --muted-foreground: #a8a29e; --border: #3a3532; --input: #3a3532; --control-border: #78716c;
+  --primary: #2dd4bf; --primary-hover: #5eead4; --primary-foreground: #042f2e; --primary-subtle: #042f2e;
+  --accent: #134e4a; --ring: #5eead4; --destructive: #f87171; --destructive-foreground: #450a0a;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --success-text: #86efac; --success-bg: #052e16; --success-border: #14532d;
+  --warning-text: #fcd34d; --warning-bg: #451a03; --warning-border: #78350f;
+  --danger-text: #fca5a5; --danger-bg: #450a0a; --danger-border: #7f1d1d;
+  --info-text: #93c5fd; --info-bg: #172554; --info-border: #1e3a8a;
+  --st-pending-text: #fcd34d; --st-pending-bg: #451a03; --st-pending-border: #78350f;
+  --st-approved-text: #93c5fd; --st-approved-bg: #172554; --st-approved-border: #1e3a8a;
+  --st-onloan-text: #c4b5fd; --st-onloan-bg: #2e1065; --st-onloan-border: #3a3532;
+  --st-overdue-text: #fca5a5; --st-overdue-bg: #450a0a; --st-overdue-border: #7f1d1d;
+  --st-returned-text: #86efac; --st-returned-bg: #052e16; --st-returned-border: #14532d;
+  --st-declined-text: #cbd5e1; --st-declined-bg: #1e293b; --st-declined-border: #3a3532;
+  --st-cancelled-text: #a8a29e; --st-cancelled-bg: #1c1917; --st-cancelled-border: #44403c;
+  --st-reported-text: #d6d3d1; --st-reported-bg: #292524; --st-reported-border: #3a3532;
+  --trusted-text: #99f6e4; --trusted-bg: #134e4a; --trusted-border: #134e4a; --trusted-icon: #2dd4bf;
+  --admin-bg: #fafaf9; --admin-text: #1c1917;
+  --cat-power-fg: #fdba74; --cat-power-bg: #431407;
+  --cat-hand-fg: #fde047; --cat-hand-bg: #422006;
+  --cat-garden-fg: #86efac; --cat-garden-bg: #052e16;
+  --cat-kitchen-fg: #fda4af; --cat-kitchen-bg: #4c0519;
+  --cat-camping-fg: #7dd3fc; --cat-camping-bg: #082f49;
+  --cat-cleaning-fg: #c4b5fd; --cat-cleaning-bg: #2e1065;
+  --cat-ladders-fg: #a5b4fc; --cat-ladders-bg: #1e1b4b;
+  --cat-other-fg: #d6d3d1; --cat-other-bg: #292524;
+  --shadow-card: none; --shadow-pop: none;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-control-border: var(--control-border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-subtle: var(--primary-subtle);
+  --color-accent: var(--accent);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-overlay: var(--overlay);
+
+  --color-success: var(--success-text);
+  --color-success-bg: var(--success-bg);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning-text);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-border: var(--warning-border);
+  --color-danger: var(--danger-text);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-border: var(--danger-border);
+  --color-info: var(--info-text);
+  --color-info-bg: var(--info-bg);
+  --color-info-border: var(--info-border);
+
+  --color-trusted: var(--trusted-text);
+  --color-trusted-bg: var(--trusted-bg);
+  --color-trusted-border: var(--trusted-border);
+  --color-trusted-icon: var(--trusted-icon);
+  --color-admin: var(--admin-text);
+  --color-admin-bg: var(--admin-bg);
+
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-display: var(--font-bricolage), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-tile: 10px;
+
+  /* shadow-ll-card / shadow-ll-pop (prefixed to avoid self-referencing the :root vars) */
+  --shadow-ll-card: var(--shadow-card);
+  --shadow-ll-pop: var(--shadow-pop);
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--border);
+  }
+  html {
+    overflow-x: clip;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  a {
+    color: var(--primary);
+  }
+  a:hover {
+    color: var(--primary-hover);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  #main:focus {
+    outline: none;
+  }
+  /* Brief A7: Lucide icons at 1.75 stroke everywhere (lucide-react adds the class). */
+  svg.lucide {
+    stroke-width: 1.75;
+  }
+}
+
+@keyframes ll-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ll-flash {
+  from { background-color: var(--primary-subtle); }
+  to { background-color: transparent; }
+}
+
+@utility animate-ll-in {
+  animation: ll-in 200ms ease-out both;
+}
+@utility animate-ll-flash {
+  animation: ll-flash 2s ease-out both;
+}
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+@utility hatched {
+  background-image: repeating-linear-gradient(135deg, var(--border) 0 2px, transparent 2px 6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes ll-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  *,
+  *::before,
+  *::after {
+    transition-property: opacity, color, background-color, border-color !important;
+    scroll-behavior: auto !important;
+  }
+}
